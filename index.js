@@ -9,12 +9,11 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// --- 🧠 GÜNCELLENMİŞ MONGODB ŞEMASI ---
 const userSchema = new mongoose.Schema({
     githubUsername: { type: String, required: true, unique: true },
     phoneNumber: { type: String, required: true },
     targetType: { type: String, enum: ['private', 'group'], default: 'private' },
-    targetId: { type: String }, // Grup ise '12345@g.us', değilse null
+    targetId: { type: String }, 
     isActive: { type: Boolean, default: true }
 });
 const User = mongoose.model('User', userSchema);
@@ -24,26 +23,38 @@ mongoose.connect(process.env.MONGO_URI)
     .catch(err => console.error('MongoDB Hatası:', err));
 
 let sock;
+let isConnected = false; 
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('.baileys_auth');
+    
     sock = makeWASocket({
         auth: state,
         printQRInTerminal: true,
         logger: pino({ level: 'silent' }),
-        browser: ["Watchman Service", "Chrome", "1.0.0"]
+        browser: ["Watchman Service", "Chrome", "1.0.0"],
+        connectTimeoutMs: 60000, 
+        defaultQueryTimeoutMs: 0,
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
+        
         if (qr) {
             console.log('HAYDİ QR KODU OKUT:');
             qrcode.generate(qr, { small: true });
         }
+
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) connectToWhatsApp();
+            isConnected = false;
+            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Bağlantı kapandı. Yeniden bağlanılıyor mu:', shouldReconnect);
+            
+            if (shouldReconnect) {
+                setTimeout(() => connectToWhatsApp(), 5000);
+            }
         } else if (connection === 'open') {
+            isConnected = true;
             console.log('Watchman WhatsApp Bağlantısı Başarılı! ✅');
         }
     });
@@ -51,20 +62,20 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 }
 
-// --- 🔍 GRUP LİSTELEME API ---
-// Botun dahil olduğu grupları görmek için: /api/groups
 app.get('/api/groups', async (req, res) => {
     try {
-        if (!sock) return res.status(500).send('WhatsApp bağlantısı henüz kurulmadı.');
+        if (!isConnected || !sock?.user) {
+            return res.status(503).json({ error: 'WhatsApp henüz bağlı değil. Lütfen loglardan QR okutun.' });
+        }
         const groups = await sock.groupFetchAllParticipating();
         const groupList = Object.values(groups).map(g => ({ name: g.subject, id: g.id }));
         res.json(groupList);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Grup çekme hatası:', err);
+        res.status(500).json({ error: 'Gruplar şu an alınamadı: ' + err.message });
     }
 });
 
-// --- 🛡️ GÜVENLİ KAYIT API ---
 app.post('/api/register', async (req, res) => {
     const { githubUsername, phoneNumber, targetType, targetId, secretKey } = req.body;
 
@@ -89,7 +100,6 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// --- 🚀 DİNAMİK WEBHOOK ENDPOINT ---
 app.post('/webhook/:githubUser', async (req, res) => {
     const { githubUser } = req.params;
     const data = req.body;
@@ -97,12 +107,11 @@ app.post('/webhook/:githubUser', async (req, res) => {
     try {
         const user = await User.findOne({ githubUsername: githubUser.toLowerCase() });
 
-        if (user && user.isActive && sock && data.repository) {
+        if (user && user.isActive && isConnected && data.repository) {
             const repoName = data.repository.full_name;
             const pusher = data.pusher ? data.pusher.name : 'Bilinmeyen';
             const message = `🔔 *Watchman Bildirimi*\n\nRepo: ${repoName}\nAksiyon: ${pusher} tarafından bir push yapıldı! 🚀`;
             
-            // Hedef belirleme: Grup mu yoksa Özel mi?
             const target = user.targetType === 'group' ? user.targetId : `${user.phoneNumber}@s.whatsapp.net`;
             
             await sock.sendMessage(target, { text: message });
