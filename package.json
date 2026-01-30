@@ -10,6 +10,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
+    "mongoose": "^9.1.5",
     "pino": "^10.3.0",
     "qrcode-terminal": "^0.12.0"
   }
