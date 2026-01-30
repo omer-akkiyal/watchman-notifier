@@ -3,5 +3,5 @@ A service that sends GitHub activity notifications via WhatsApp.
 
 ## Status
 - [x] Base Infrastructure
-- [ ] GitHub Webhook Integration
+- [x] GitHub Webhook Integration
 - [ ] WhatsApp Service Integration
