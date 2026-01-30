@@ -7,7 +7,9 @@ const app = express();
 app.use(express.json());
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+        dataPath: './.wwebjs_auth' 
+    }),
     puppeteer: {
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     }
