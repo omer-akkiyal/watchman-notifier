@@ -53,12 +53,14 @@ app.post('/github-webhook', async (req, res) => {
         const message = `🔔 *Watchman Bildirimi*\n\nRepo: ${repoName}\nAksiyon: ${pusher} tarafından push yapıldı.`;
         
         try {
-            const myNumber = process.env.MY_NUMBER; // Format: 905xxxxxxxxx@s.whatsapp.net
+            let myNumber = process.env.MY_NUMBER; // Örn: 905301234567
+            
             if (myNumber) {
-                // Baileys'te numara formatı biraz farklıdır (@s.whatsapp.net)
-                const formattedNumber = myNumber.includes('@') ? myNumber : `${myNumber}@s.whatsapp.net`;
+                let cleanNumber = myNumber.split('@')[0]; 
+                const formattedNumber = `${cleanNumber}@s.whatsapp.net`;
+                
                 await sock.sendMessage(formattedNumber, { text: message });
-                console.log(`[${new Date().toLocaleTimeString()}] Mesaj gönderildi.`);
+                console.log(`[${new Date().toLocaleTimeString()}] Mesaj ${formattedNumber} adresine fırlatıldı!`);
             }
         } catch (error) {
             console.error('Mesaj hatası:', error);
