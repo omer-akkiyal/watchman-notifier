@@ -64,7 +64,7 @@ passport.use(new GoogleStrategy({
 passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    callbackURL: "https://watchman-notifier.onrender.com/api/auth/github/callback",
+    callbackURL: "http://watchman-notifier.onrender.com/api/auth/github/callback",
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
