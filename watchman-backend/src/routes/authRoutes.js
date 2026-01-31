@@ -28,21 +28,45 @@ const setTokenCookie = (res, user) => {
 
 const CLIENT_URL = process.env.CLIENT_URL || "https://watchman-notifier.onrender.com";
 
+// Google Auth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 router.get('/google/callback',
-    passport.authenticate('google', { failureRedirect: '/login', session: false }), // Session false çünkü JWT kullanıyoruz
-    (req, res) => {
-        setTokenCookie(res, req.user);
-        res.redirect(CLIENT_URL);
+    (req, res, next) => {
+        passport.authenticate('google', { session: false }, (err, user, info) => {
+            if (err) {
+                console.error("Google Auth Callback Error:", err);
+                return res.redirect(`${CLIENT_URL}/login?error=auth_failed`);
+            }
+            if (!user) {
+                console.error("Google Auth No User:", info);
+                return res.redirect(`${CLIENT_URL}/login?error=no_user`);
+            }
+
+            // Hem Cookie hem Query Param olarak gönderelim (Garanti olsun)
+            setTokenCookie(res, user);
+            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+            res.redirect(`${CLIENT_URL}?token=${token}`);
+        })(req, res, next);
     }
 );
 
+// GitHub Auth
 router.get('/github', passport.authenticate('github', { scope: ['user:email'] }));
 router.get('/github/callback',
-    passport.authenticate('github', { failureRedirect: '/login', session: false }),
-    (req, res) => {
-        setTokenCookie(res, req.user);
-        res.redirect(CLIENT_URL);
+    (req, res, next) => {
+        passport.authenticate('github', { session: false }, (err, user, info) => {
+            if (err) {
+                console.error("GitHub Auth Callback Error:", err);
+                return res.redirect(`${CLIENT_URL}/login?error=auth_failed`);
+            }
+            if (!user) {
+                return res.redirect(`${CLIENT_URL}/login?error=no_user`);
+            }
+
+            setTokenCookie(res, user);
+            const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+            res.redirect(`${CLIENT_URL}?token=${token}`);
+        })(req, res, next);
     }
 );
 

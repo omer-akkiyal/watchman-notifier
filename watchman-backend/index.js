@@ -17,6 +17,7 @@ require('./src/config/passport');
 const authRoutes = require('./src/routes/authRoutes');
 
 const app = express();
+app.set('trust proxy', 1); // Render gibi proxy arkasında çalışan uygulamalar için güvenli cookie ve ip loglaması
 
 app.use(express.json());
 app.use(cookieParser());
