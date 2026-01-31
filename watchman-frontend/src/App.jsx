@@ -132,7 +132,15 @@ const Dashboard = ({ user }) => {
 
   const deleteRule = async (id) => {
     if (window.confirm("Bu bekçiyi silmek istediğine emin misin?")) {
-      setRules(rules.filter(r => r._id !== id));
+      try {
+        await axios.delete(`${API_URL}/api/watchmen/${id}`);
+        
+        setRules(rules.filter(r => r._id !== id));
+        alert("Bekçi başarıyla kaldırıldı.");
+      } catch (err) {
+        console.error("Silme hatası:", err);
+        alert("Bekçi silinirken bir hata oluştu.");
+      }
     }
   };
 
