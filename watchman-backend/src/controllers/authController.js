@@ -28,30 +28,42 @@ const sendTokenResponse = (user, statusCode, res) => {
 };
 
 exports.register = async (req, res) => {
-    const { name, email, password } = req.body;
-
-    // Şifre validasyonu frontend yapıyor ama backend de bakabilir
-    const user = await User.create({ name, email, password });
-
-    const verificationToken = crypto.randomBytes(20).toString('hex');
-    user.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
-    // Email URL
-    // Frontend URL'i .env'den gelmeli
-    const clientUrl = process.env.CLIENT_URL || 'https://watchman-notifier.onrender.com';
-    const verifyUrl = `${clientUrl}/verify-email/${verificationToken}`;
-
     try {
-        await sendEmail({
-            email: user.email,
-            subject: 'Watchman V3 - Email Doğrulama',
-            html: `<h1>Hoşgeldiniz ${user.name || ''}!</h1><p>Hesabınızı doğrulamak için lütfen <a href="${verifyUrl}">buraya tıklayın</a>.</p>`
-        });
+        const { name, email, password } = req.body;
 
-        res.status(200).json({ success: true, data: "Email gönderildi." });
+        // E-posta kontrolü
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ error: 'Bu e-posta adresi zaten kayıtlı. Lütfen giriş yapın.' });
+        }
+
+        const user = await User.create({ name, email, password });
+
+        const verificationToken = crypto.randomBytes(20).toString('hex');
+        user.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+        const clientUrl = process.env.CLIENT_URL || 'https://watchman-notifier.onrender.com';
+        const verifyUrl = `${clientUrl}/verify-email/${verificationToken}`;
+
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Watchman V3 - Email Doğrulama',
+                html: `<h1>Hoşgeldiniz ${user.name || ''}!</h1><p>Hesabınızı doğrulamak için lütfen <a href="${verifyUrl}">buraya tıklayın</a>.</p>`
+            });
+            res.status(200).json({ success: true, data: "Email gönderildi." });
+        } catch (emailErr) {
+            user.verificationToken = undefined;
+            // Email hatasında kullanıcıyı silmiyoruz ama token'ı siliyor muyuz? 
+            // Kullanıcı kalsın ama doğrulanamasın, tekrar mail isteyebilir. Burada save yapalım.
+            await user.save({ validateBeforeSave: false });
+            return res.status(500).json({ error: 'Kullanıcı oluşturuldu ancak email gönderilemedi.' });
+        }
+
     } catch (err) {
-        user.verificationToken = undefined;
-        await user.save({ validateBeforeSave: false });
-        return res.status(500).json({ error: 'Email gönderilemedi.' });
+        if (err.code === 11000) {
+            return res.status(400).json({ error: 'Bu e-posta adresi zaten kayıtlı.' });
+        }
+        res.status(500).json({ error: err.message });
     }
 };
 

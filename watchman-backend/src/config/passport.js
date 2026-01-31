@@ -24,37 +24,59 @@ passport.use(new GoogleStrategy({
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
-        let user = await User.findOne({ googleId: profile.id });
-
-        if (user) {
-            return done(null, user);
-        }
-
         const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
-
         if (!email) {
             return done(new Error("Google hesabınızda onaylı bir e-posta adresi bulunamadı."), null);
         }
 
+        // Upsert Mantığı: Google ID veya Email ile bul, yoksa oluştur
+        // Ancak $or ile upsert Mongoose'da doğrudan yok.
+        // Önce bulalım, sonra update veya create yapalım ama try-catch ile duplicate'i yakalayalım.
+
+        // 1. Önce Google ID ile kontrol
+        let user = await User.findOne({ googleId: profile.id });
+
+        if (user) {
+            if (!user.name) { user.name = profile.displayName; await user.save(); }
+            return done(null, user);
+        }
+
+        // 2. Email ile kontrol
         user = await User.findOne({ email });
 
         if (user) {
+            // Eşleşen email varsa hesabı Google ID ile güncelle
             user.googleId = profile.id;
             if (!user.isVerified) user.isVerified = true;
-            // İsim yoksa güncelle
             if (!user.name) user.name = profile.displayName;
             await user.save();
             return done(null, user);
         }
 
-        user = await User.create({
-            name: profile.displayName,
-            googleId: profile.id,
-            email: email,
-            isVerified: true
-        });
+        // 3. Yeni Kullanıcı Oluştur (Duplicate Key Hatasını Yakala)
+        try {
+            user = await User.create({
+                googleId: profile.id,
+                email: email,
+                name: profile.displayName,
+                isVerified: true
+            });
+            return done(null, user);
+        } catch (createErr) {
+            if (createErr.code === 11000) {
+                // Eğer tam bu anda başka bir request ile aynı email kaydedildiyse (Race Condition)
+                // Tekrar bulmayı dene
+                user = await User.findOne({ email });
+                if (user) {
+                    user.googleId = profile.id;
+                    if (!user.isVerified) user.isVerified = true;
+                    await user.save();
+                    return done(null, user);
+                }
+            }
+            throw createErr;
+        }
 
-        return done(null, user);
     } catch (err) {
         console.error("Google Auth Error:", err);
         return done(err, null);
@@ -68,27 +90,20 @@ passport.use(new GitHubStrategy({
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
+        // 1. GitHub ID ile kontrol
         let user = await User.findOne({ githubId: profile.id });
 
         if (user) {
-            // Kullanıcı varsa bilgilerini güncelle (isim vs değişmiş olabilir)
-            // Ancak email değişimi riskli olabilir, sadece isim güncelleyelim
-            if (!user.name) {
-                user.name = profile.displayName || profile.username;
-                await user.save();
-            }
+            if (!user.name) { user.name = profile.displayName || profile.username; await user.save(); }
             return done(null, user);
         }
 
-        // Email kontrolü
+        // 2. Email Belirleme ve Kontrol
         let email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
-
-        // Email yoksa veya private ise Fallback oluştur
         if (!email) {
             email = `${profile.username || profile.id}@github.com`;
         }
 
-        // Bu email ile kayıtlı kullanıcı var mı?
         user = await User.findOne({ email });
 
         if (user) {
@@ -99,16 +114,30 @@ passport.use(new GitHubStrategy({
             return done(null, user);
         }
 
-        // Yeni kullanıcı (Email ve Name garbage değer olmamalı)
-        user = await User.create({
-            name: profile.displayName || profile.username || 'GitHub User',
-            githubId: profile.id,
-            email: email,
-            isVerified: true,
-            password: Math.random().toString(36).slice(-8) // Random şifre (Modelde required: false yaptık ama garanti olsun)
-        });
+        // 3. Yeni Kullanıcı Oluştur (Race Condition Korumalı)
+        try {
+            user = await User.create({
+                name: profile.displayName || profile.username || 'GitHub User',
+                githubId: profile.id,
+                email: email,
+                isVerified: true,
+                password: Math.random().toString(36).slice(-8)
+            });
+            return done(null, user);
+        } catch (createErr) {
+            if (createErr.code === 11000) {
+                // E-posta çakışması (Race condition)
+                user = await User.findOne({ email });
+                if (user) {
+                    user.githubId = profile.id;
+                    if (!user.isVerified) user.isVerified = true;
+                    await user.save();
+                    return done(null, user);
+                }
+            }
+            throw createErr;
+        }
 
-        return done(null, user);
     } catch (err) {
         console.error("GitHub Auth Error:", err);
         return done(err, null);
