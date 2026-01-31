@@ -52,38 +52,6 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  const [user, setUser] = useState(() => {
-    const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
-  const [isLoggedIn, setIsLoggedIn] = useState(!!user);
-  const [loading, setLoading] = useState(true);
-
-  // URL'den token yakalama (Social Login dönüşü)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      // Token'ı kaydet (HTTP-only cookie zaten set edildi ama client-side requestler için header'da gerekebilir, şimdilik cookie yetiyor ama isLoggedIn state için burası önemli)
-      // User bilgisini almak için /me endpoint'ine istek atılabilir ama basitlik adına token varsa giriş yapıldı sayalım.
-      // Daha sağlıklısı: Token varsa /api/auth/me çağırıp user datasını almak.
-      // Şimdilik dummy user oluşturup dashboarda alalım.
-      // TODO: Backend'den user bilgisini decode etmek veya fetch etmek daha iyi.
-      setIsLoggedIn(true);
-      // URL temizle
-      window.history.replaceState({}, document.title, "/");
-
-      // Hızlıca bir /me isteği atıp user'ı set edelim, yoksa boş user ile kalır.
-      // Bu örnekte direkt axios import edip çağıralım veya AuthContext kullanalım. 
-      // Ancak App.jsx AuthProvider dışında (main.jsx sarmalıyor mu? Hayır, App içinde sarmalanıyor).
-      // Bu logic AuthProvider içinde veya Dashboard içinde olmalı.
-      // Token varsa user set etmek için en temiz yol:
-      // Burayı geçici olarak token varsa true yapıp dashboard'a yönlendiriyoruz.
-      // Dashboard içindeki fetchRules zaten user.id bekliyor. Sorun çıkabilir.
-      // En iyisi AuthProvider içine token check koymak.
-    }
-    setLoading(false);
-  }, []);
   return (
     <BrowserRouter>
       <AuthProvider>
