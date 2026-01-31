@@ -21,22 +21,24 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: ["http://localhost:5173", "https://watchman-notifier.onrender.com"], // Dev ve Prod
     credentials: true
 }));
 
+// Session (Passport için gerekli)
 app.use(session({
     secret: process.env.SESSION_SECRET || 'secret',
     resave: false,
     saveUninitialized: false
 }));
 
+// Passport Middleware
 app.use(passport.initialize());
 app.use(passport.session());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "http://localhost:5173", methods: ["GET", "POST"], credentials: true }
+    cors: { origin: ["http://localhost:5173", "https://watchman-notifier.onrender.com"], methods: ["GET", "POST"], credentials: true }
 });
 
 connectDB();

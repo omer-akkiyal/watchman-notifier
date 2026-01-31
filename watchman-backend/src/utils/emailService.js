@@ -1,8 +1,6 @@
 const nodemailer = require('nodemailer');
 
 const sendEmail = async (options) => {
-    // Transporter oluştur (Gmail veya SMTP sunucusu)
-    // NOT: Prodüksiyonda environment variable kullanın!
     const transporter = nodemailer.createTransport({
         service: process.env.SMTP_SERVICE || 'gmail',
         auth: {
@@ -15,7 +13,7 @@ const sendEmail = async (options) => {
         from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
         to: options.email,
         subject: options.subject,
-        html: options.html // HTML içerik desteği
+        html: options.html
     };
 
     const info = await transporter.sendMail(message);

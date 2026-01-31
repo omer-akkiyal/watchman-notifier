@@ -3,7 +3,6 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const sendEmail = require('../utils/emailService');
 
-// Helper: Token oluştur ve Cookie ayarla
 const sendTokenResponse = (user, statusCode, res) => {
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
         expiresIn: process.env.JWT_EXPIRE || '30d'
@@ -20,21 +19,16 @@ const sendTokenResponse = (user, statusCode, res) => {
         .json({ success: true, token });
 };
 
-// @desc    Kullanıcı Kaydı
-// @route   POST /api/auth/register
 exports.register = async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.create({ email, password });
 
-    // Verification Token
     const verificationToken = crypto.randomBytes(20).toString('hex');
     user.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
-    await user.save({ validateBeforeSave: false });
-
     // Email URL
-    // Frontend URL'i .env'den gelmeli, şimdilik hardcode
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+    // Frontend URL'i .env'den gelmeli
+    const clientUrl = process.env.CLIENT_URL || 'https://watchman-notifier.onrender.com';
     const verifyUrl = `${clientUrl}/verify-email/${verificationToken}`;
 
     try {
@@ -52,8 +46,6 @@ exports.register = async (req, res) => {
     }
 };
 
-// @desc    Email Doğrulama
-// @route   GET /api/auth/verifyemail/:token
 exports.verifyEmail = async (req, res) => {
     const verificationToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
 
@@ -70,12 +62,9 @@ exports.verifyEmail = async (req, res) => {
     sendTokenResponse(user, 200, res);
 };
 
-// @desc    Giriş Yap
-// @route   POST /api/auth/login
 exports.login = async (req, res) => {
     const { email, password } = req.body;
 
-    // Şifreyi dahil et (select: false olduğu için)
     const user = await User.findOne({ email }).select('+password');
 
     if (!user || !(await user.matchPassword(password))) {
@@ -89,8 +78,6 @@ exports.login = async (req, res) => {
     sendTokenResponse(user, 200, res);
 };
 
-// @desc    Çıkış Yap
-// @route   POST /api/auth/logout
 exports.logout = async (req, res) => {
     res.cookie('token', 'none', {
         expires: new Date(Date.now() + 10 * 1000),
