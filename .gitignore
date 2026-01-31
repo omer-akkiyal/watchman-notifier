@@ -1,6 +1,23 @@
-node_modules
+# --- OS & IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- BACKEND (watchman-backend) ---
+watchman-backend/node_modules/
+watchman-backend/.env
+watchman-backend/.baileys_auth/
+watchman-backend/npm-debug.log*
+
+# --- FRONTEND (watchman-frontend) ---
+watchman-frontend/node_modules/
+watchman-frontend/dist/
+watchman-frontend/.env
+watchman-frontend/.env.local
+watchman-frontend/npm-debug.log*
+
+# --- MISC ---
+node_modules/
 .env
-.wwebjs_auth
-.wwebjs_cache
-npm-debug.log
-.baileys_auth
+npm-debug.log*

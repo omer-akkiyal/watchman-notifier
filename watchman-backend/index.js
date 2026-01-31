@@ -7,11 +7,22 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
 app.use(express.json());
-app.use(express.static('public'));
+app.use(cors()); 
 
+const server = http.createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: ["https://senin-frontend-linkin.onrender.com", "http://localhost:5173"], 
+        methods: ["GET", "POST"],
+        credentials: true
+    }
+});
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -56,7 +67,6 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-
 app.post('/api/watchmen', async (req, res) => {
     const { userId, ruleName, targetId } = req.body;
     try {
@@ -64,8 +74,17 @@ app.post('/api/watchmen', async (req, res) => {
         await newWatchman.save();
         res.json({ 
             message: 'Yeni bekçi kuruldu!', 
-            webhookUrl: `https://${req.get('host')}/webhook/v1/${newWatchman.webhookToken}` 
+            webhookUrl: `http://${req.get('host')}/webhook/v1/${newWatchman.webhookToken}` 
         });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/watchmen/:userId', async (req, res) => {
+    try {
+        const rules = await Watchman.find({ userId: req.params.userId });
+        res.json(rules);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -74,21 +93,17 @@ app.post('/api/watchmen', async (req, res) => {
 app.post('/webhook/v1/:token', async (req, res) => {
     const { token } = req.params;
     const data = req.body;
-
     try {
-        // Token'a sahip kuralı bul
         const watchman = await Watchman.findOne({ webhookToken: token, isActive: true });
-        
         if (watchman && isConnected && data.repository) {
             const repoName = data.repository.full_name;
             const pusher = data.pusher ? data.pusher.name : 'Bilinmeyen';
             const message = `🔔 *Watchman Bildirimi*\n\nKural: ${watchman.ruleName}\nRepo: ${repoName}\nAksiyon: Push yapıldı! 🚀`;
-            
             await sock.sendMessage(watchman.targetId, { text: message });
-            console.log(`[${new Date().toLocaleTimeString()}] Token ${token} için mesaj iletildi.`);
+            console.log(`[${new Date().toLocaleTimeString()}] Mesaj iletildi: ${token}`);
         }
     } catch (error) {
-        console.error('Webhook V2 Hatası:', error);
+        console.error('Webhook Hatası:', error);
     }
     res.status(200).send('OK');
 });
@@ -102,24 +117,32 @@ async function connectToWhatsApp() {
         auth: state,
         printQRInTerminal: true,
         logger: pino({ level: 'silent' }),
-        browser: ["Watchman Service", "Chrome", "1.0.0"]
+        browser: ["Watchman SaaS", "Chrome", "1.0.0"]
     });
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, qr } = update;
-        if (qr) qrcode.generate(qr, { small: true });
+        const { connection, lastDisconnect, qr } = update;
+        
+        if (qr) {
+            qrcode.generate(qr, { small: true });
+            io.emit('qr', qr); 
+        }
+
         if (connection === 'close') {
             isConnected = false;
-            setTimeout(() => connectToWhatsApp(), 5000);
+            io.emit('connection_status', 'disconnected');
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) setTimeout(() => connectToWhatsApp(), 5000);
         } else if (connection === 'open') {
             isConnected = true;
-            console.log('Watchman WhatsApp Bağlantısı Başarılı! ✅');
+            io.emit('connection_status', 'connected');
+            console.log('WhatsApp Bağlantısı Aktif! ✅');
         }
     });
+
     sock.ev.on('creds.update', saveCreds);
 }
 
-// Grupları Listele
 app.get('/api/groups', async (req, res) => {
     try {
         if (!isConnected) return res.status(503).json({ error: 'WhatsApp bağlı değil.' });
@@ -128,10 +151,13 @@ app.get('/api/groups', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/', (req, res) => res.send('Watchman V2 SaaS Platform Active! 🚀'));
+io.on('connection', (socket) => {
+    console.log('Yeni bir Dashboard kullanıcısı bağlandı 🟢');
+    socket.emit('connection_status', isConnected ? 'connected' : 'disconnected');
+});
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Watchman V2 Dinleniyor: Port ${PORT}`);
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Watchman V3 Backend Aktif: ${PORT}`);
     connectToWhatsApp();
 });
