@@ -3,35 +3,51 @@ const express = require('express');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const fs = require('fs'); 
+const fs = require('fs');
+const passport = require('passport');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+
+const connectDB = require('./src/config/db');
+require('./src/config/passport');
+const authRoutes = require('./src/routes/authRoutes');
 
 const app = express();
+
 app.use(express.json());
-app.use(cors());
+app.use(cookieParser());
+app.use(cors({
+    origin: "http://localhost:5173",
+    credentials: true
+}));
+
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'secret',
+    resave: false,
+    saveUninitialized: false
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"], credentials: true }
+    cors: { origin: "http://localhost:5173", methods: ["GET", "POST"], credentials: true }
 });
+
+connectDB();
+
+app.use('/api/auth', authRoutes);
 
 app.use(express.static(path.join(__dirname, '../watchman-frontend/dist')));
 
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB Bağlantısı Başarılı! 🧠'))
-    .catch(err => console.error('MongoDB Hatası:', err));
-
-const User = mongoose.model('User', new mongoose.Schema({
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
-}));
+const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
+const { protect } = require('./src/middlewares/authMiddleware');
 
 const Watchman = mongoose.model('Watchman', new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -41,51 +57,39 @@ const Watchman = mongoose.model('Watchman', new mongoose.Schema({
     isActive: { type: Boolean, default: true }
 }));
 
-app.post('/api/auth/register', async (req, res) => {
+// ... (Socket logic ve eski route'lar buranın altında kalacak, temizlik sonraki fazda)
+// NOT: Buradaki User model tanımını kaldırdık, artık src/models/User.js kullanılıyor.
+// Ancak Watchman modeli hala burada. İlerde models/Watchman.js'e taşınmalı.
+
+app.post('/api/watchmen', protect, async (req, res) => {
+
+    const { ruleName, targetId } = req.body;
     try {
-        const { email, password } = req.body;
-        // Çakışma kontrolü
-        const existingUser = await User.findOne({ email });
-        if (existingUser) return res.status(400).json({ error: 'Bu e-posta zaten kullanımda.' });
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({ email, password: hashedPassword });
-        await user.save();
-        res.status(201).json({ message: 'Hesap başarıyla oluşturuldu.' });
-    } catch (err) {
-        res.status(500).json({ error: 'Kayıt sırasında bir hata oluştu.' });
-    }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
-    if (user && await bcrypt.compare(password, user.password)) {
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-        res.json({ token, user: { email: user.email, id: user._id } });
-    } else {
-        res.status(401).json({ error: 'E-posta veya şifre yanlış.' });
-    }
-});
-
-app.post('/api/watchmen', async (req, res) => {
-    const { userId, ruleName, targetId } = req.body;
-    try {
-        const newWatchman = new Watchman({ userId, ruleName, targetId });
+        const newWatchman = new Watchman({ userId: req.user._id, ruleName, targetId });
         await newWatchman.save();
         res.json(newWatchman);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/watchmen/:userId', async (req, res) => {
+app.get('/api/watchmen/:userId', protect, async (req, res) => {
+    if (req.params.userId !== req.user._id.toString()) {
+        return res.status(401).json({ error: 'Yetkisiz erişim.' });
+    }
     try {
         const rules = await Watchman.find({ userId: req.params.userId });
         res.json(rules);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.delete('/api/watchmen/:id', async (req, res) => {
+app.delete('/api/watchmen/:id', protect, async (req, res) => {
     try {
+        const watchman = await Watchman.findById(req.params.id);
+        if (!watchman) return res.status(404).json({ error: 'Bekçi bulunamadı.' });
+
+        if (watchman.userId.toString() !== req.user._id.toString()) {
+            return res.status(401).json({ error: 'Bu işlemi yapmaya yetkiniz yok.' });
+        }
+
         await Watchman.findByIdAndDelete(req.params.id);
         res.json({ message: 'Bekçi kalıcı olarak silindi.' });
     } catch (err) { res.status(500).json({ error: 'Silme hatası.' }); }
@@ -94,11 +98,11 @@ app.delete('/api/watchmen/:id', async (req, res) => {
 let sock;
 let isConnected = false;
 
-app.get('/api/whatsapp/status', (req, res) => {
+app.get('/api/whatsapp/status', protect, (req, res) => {
     res.json({ status: isConnected ? 'connected' : 'disconnected' });
 });
 
-app.post('/api/whatsapp/logout', async (req, res) => {
+app.post('/api/whatsapp/logout', protect, async (req, res) => {
     try {
         if (sock) await sock.logout();
         isConnected = false;
@@ -123,7 +127,7 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) io.emit('qr', qr);
-        
+
         if (connection === 'close') {
             isConnected = false;
             io.emit('connection_status', 'disconnected');
@@ -151,7 +155,7 @@ app.post('/webhook/v1/:token', async (req, res) => {
     res.status(200).send('OK');
 });
 
-app.get('/api/groups', async (req, res) => {
+app.get('/api/groups', protect, async (req, res) => {
     try {
         if (!isConnected) return res.status(503).json({ error: 'WhatsApp bağlı değil.' });
         const groups = await sock.groupFetchAllParticipating();
