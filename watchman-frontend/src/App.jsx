@@ -3,24 +3,32 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
-import { LayoutDashboard, Settings, Bell, LogOut, CheckCircle, Loader2, Key, Plus, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Settings, Bell, LogOut, CheckCircle, Loader2, Key, Plus, Trash2, UserPlus } from 'lucide-react';
 
 const API_URL = "https://watchman-notifier.onrender.com";
 const socket = io(API_URL, { transports: ["websocket", "polling"] });
 
-// --- 🔐 AUTH PAGE (Giriş & Kayıt Ekranı) ---
 const AuthPage = ({ onLogin }) => {
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
+    if (!email || !password) return alert("Lütfen tüm alanları doldur!");
     setLoading(true);
+    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+    
     try {
-      const res = await axios.post(`${API_URL}/api/auth/login`, { email, password });
-      onLogin(res.data.user);
+      const res = await axios.post(`${API_URL}${endpoint}`, { email, password });
+      if (isLogin) {
+        onLogin(res.data.user);
+      } else {
+        alert("Kayıt başarılı! Şimdi giriş yapabilirsin.");
+        setIsLogin(true);
+      }
     } catch (err) {
-      alert("Giriş başarısız! Lütfen bilgilerinizi kontrol edin.");
+      alert(err.response?.data?.error || "Bir hata oluştu!");
     } finally {
       setLoading(false);
     }
@@ -30,24 +38,31 @@ const AuthPage = ({ onLogin }) => {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-4xl shadow-2xl">
         <div className="flex justify-center mb-6">
-          <div className="bg-green-500/20 p-4 rounded-2xl text-green-500"><Key size={32}/></div>
+          <div className="bg-green-500/20 p-4 rounded-2xl text-green-500">
+            {isLogin ? <Key size={32}/> : <UserPlus size={32}/>}
+          </div>
         </div>
-        <h2 className="text-3xl font-bold text-center text-white mb-8 tracking-tight">Giriş Yap</h2>
+        <h2 className="text-3xl font-bold text-center text-white mb-8 tracking-tight">
+          {isLogin ? "Giriş Yap" : "Kayıt Ol"}
+        </h2>
         <div className="space-y-4">
           <input type="email" placeholder="Email Adresi" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 ring-green-500/50" 
             onChange={e => setEmail(e.target.value)} />
           <input type="password" placeholder="Şifre" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 ring-green-500/50" 
             onChange={e => setPassword(e.target.value)} />
           <button onClick={handleSubmit} disabled={loading} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition-all active:scale-95 flex justify-center items-center">
-            {loading ? <Loader2 className="animate-spin" size={20}/> : "Devam Et"}
+            {loading ? <Loader2 className="animate-spin" size={20}/> : (isLogin ? "Devam Et" : "Hesap Oluştur")}
           </button>
+          <p className="text-center text-slate-500 text-sm mt-4 cursor-pointer hover:text-green-500 transition-colors" 
+             onClick={() => setIsLogin(!isLogin)}>
+            {isLogin ? "Hesabın yok mu? Kayıt Ol" : "Zaten üye misin? Giriş Yap"}
+          </p>
         </div>
       </div>
     </div>
   );
 };
 
-// --- 📱 WHATSAPP PAGE (QR & Bağlantı Yönetimi) ---
 const WhatsAppPage = () => {
   const [qr, setQr] = useState(null);
   const [status, setStatus] = useState('loading');
@@ -93,22 +108,32 @@ const WhatsAppPage = () => {
   );
 };
 
-// --- 🏠 DASHBOARD (Bekçi Yönetimi) ---
 const Dashboard = ({ user }) => {
   const [rules, setRules] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [newRule, setNewRule] = useState({ name: '', target: '' });
   const [groups, setGroups] = useState([]);
 
-  useEffect(() => {
+  const fetchRules = () => {
     axios.get(`${API_URL}/api/watchmen/${user.id}`).then(res => setRules(res.data));
+  };
+
+  useEffect(() => {
+    fetchRules();
     axios.get(`${API_URL}/api/groups`).then(res => setGroups(res.data)).catch(() => {});
   }, [user.id]);
 
   const handleCreate = async () => {
-    const res = await axios.post(`${API_URL}/api/watchmen`, { userId: user.id, ruleName: newRule.name, targetId: newRule.target });
-    setRules([...rules, res.data]);
+    if (!newRule.name || !newRule.target) return alert("Lütfen tüm alanları doldur!");
+    await axios.post(`${API_URL}/api/watchmen`, { userId: user.id, ruleName: newRule.name, targetId: newRule.target });
+    fetchRules();
     setShowModal(false);
+  };
+
+  const deleteRule = async (id) => {
+    if (window.confirm("Bu bekçiyi silmek istediğine emin misin?")) {
+      setRules(rules.filter(r => r._id !== id));
+    }
   };
 
   return (
@@ -122,10 +147,12 @@ const Dashboard = ({ user }) => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {rules.map(rule => (
-          <div key={rule._id} className="bg-slate-900 border border-slate-800 p-6 rounded-3xl hover:border-green-500/50 transition-all group">
+          <div key={rule._id} className="bg-slate-900 border border-slate-800 p-6 rounded-3xl hover:border-green-500/50 transition-all group relative">
             <div className="flex justify-between mb-4">
               <div className="bg-slate-800 p-2 rounded-lg text-green-500"><Bell size={20}/></div>
-              <button className="text-slate-600 hover:text-red-500 transition-colors"><Trash2 size={18}/></button>
+              <button onClick={() => deleteRule(rule._id)} className="text-slate-600 hover:text-red-500 transition-colors">
+                <Trash2 size={18}/>
+              </button>
             </div>
             <h4 className="text-white font-bold text-lg mb-1">{rule.ruleName}</h4>
             <p className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-4">Webhook Aktif</p>
@@ -157,27 +184,33 @@ const Dashboard = ({ user }) => {
     </div>
   );
 };
-
-// --- 🚀 LANDING PAGE (Sitenin Vitrini) ---
 const LandingPage = () => (
   <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
     <h1 className="text-7xl font-black mb-6 bg-linear-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent italic tracking-tighter">WATCHMAN</h1>
-    <p className="text-xl text-slate-400 max-w-2xl mb-10 font-medium">GitHub olaylarını saniyeler içinde WhatsApp gruplarına taşıyın. Bekçinizi kurun, arkanıza yaslanın.</p>
+    <p className="text-xl text-slate-400 max-w-2xl mb-10 font-medium">GitHub olaylarını saniyeler içinde WhatsApp gruplarına taşıyın.</p>
     <div className="flex gap-4">
       <Link to="/login" className="bg-green-600 hover:bg-green-500 px-10 py-4 rounded-2xl font-bold text-lg transition-all shadow-lg shadow-green-900/20">Hemen Başla</Link>
     </div>
   </div>
 );
 
-// --- 🏛️ MAIN APP COMPONENT ---
 function App() {
-  const [user, setUser] = useState(JSON.parse(localStorage.getItem('user')));
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
   const [isLoggedIn, setIsLoggedIn] = useState(!!user);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
     setIsLoggedIn(false);
     setUser(null);
+  };
+
+  const handleLogin = (userData) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+    setIsLoggedIn(true);
   };
 
   return (
@@ -202,7 +235,7 @@ function App() {
         <main className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_right,var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950">
           <Routes>
             <Route path="/" element={isLoggedIn ? <Navigate to="/dashboard" /> : <LandingPage />} />
-            <Route path="/login" element={<AuthPage onLogin={(u) => { setUser(u); setIsLoggedIn(true); localStorage.setItem('user', JSON.stringify(u)); }} />} />
+            <Route path="/login" element={<AuthPage onLogin={handleLogin} />} />
             <Route path="/dashboard" element={isLoggedIn ? <Dashboard user={user} /> : <Navigate to="/login" />} />
             <Route path="/whatsapp" element={isLoggedIn ? <WhatsAppPage /> : <Navigate to="/login" />} />
           </Routes>
