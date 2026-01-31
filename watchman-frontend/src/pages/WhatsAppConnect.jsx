@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import io from 'socket.io-client'; // Global socket instance kullanmak daha iyi olabilir context ile
+import io from 'socket.io-client';
 import { QRCodeSVG } from 'qrcode.react';
 import { CheckCircle, Loader2 } from 'lucide-react';
 
-const API_URL = "http://localhost:10000";
+const API_URL = "https://watchman-notifier.onrender.com";
 const socket = io(API_URL, { transports: ["websocket", "polling"] });
 
 const WhatsAppConnect = () => {

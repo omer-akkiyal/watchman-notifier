@@ -7,7 +7,7 @@ const Dashboard = ({ user }) => {
     const [showModal, setShowModal] = useState(false);
     const [newRule, setNewRule] = useState({ name: '', target: '' });
     const [groups, setGroups] = useState([]);
-    const API_URL = "http://localhost:10000"; // Global config'den gelmeli ama şimdilik hardcode
+    const API_URL = "https://watchman-notifier.onrender.com/"; // Global config'den gelmeli ama şimdilik hardcode
 
     const fetchRules = () => {
         // user.id context'ten veya prop'tan gelmeli. 

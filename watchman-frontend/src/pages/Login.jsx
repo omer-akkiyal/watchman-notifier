@@ -21,7 +21,7 @@ const Login = () => {
     };
 
     const handleSocialLogin = (provider) => {
-        window.location.href = `http://localhost:10000/api/auth/${provider}`;
+        window.location.href = `https://watchman-notifier.onrender.com/api/auth/${provider}`;
     };
 
     return (
