@@ -1,0 +1,12 @@
+{
+  "name": "watchman-v3-monolith",
+  "version": "1.0.0",
+  "scripts": {
+    "install-backend": "cd watchman-backend && npm install",
+    "install-frontend": "cd watchman-frontend && npm install",
+    "build-frontend": "cd watchman-frontend && npm run build",
+    "install-all": "npm run install-backend && npm run install-frontend",
+    "render-build": "npm run install-all && npm run build-frontend",
+    "start": "cd watchman-backend && node index.js"
+  }
+}

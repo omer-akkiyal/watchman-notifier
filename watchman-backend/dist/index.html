@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watchman V2 | Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-200 font-sans min-h-screen">
+
+    <nav class="border-b border-slate-800 p-4 flex justify-between items-center bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+        <h1 class="text-2xl font-black text-green-500 tracking-tighter">WATCHMAN <span class="text-white font-light text-sm tracking-normal">v2.0</span></h1>
+        <div id="userInfo" class="hidden flex items-center gap-4">
+            <span id="userEmail" class="text-xs text-slate-400"></span>
+            <button onclick="logout()" class="text-xs bg-red-500/10 text-red-500 px-3 py-1 rounded-full border border-red-500/20 hover:bg-red-500 hover:text-white transition">Çıkış</button>
+        </div>
+    </nav>
+
+    <div id="authSection" class="max-w-md mx-auto mt-20 p-8 bg-slate-900 rounded-3xl border border-slate-800 shadow-2xl">
+        <h2 class="text-2xl font-bold mb-6 text-center">Hoş Geldin</h2>
+        <div class="space-y-4">
+            <input type="email" id="email" placeholder="Email" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:border-green-500 outline-none transition">
+            <input type="password" id="password" placeholder="Şifre" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 focus:border-green-500 outline-none transition">
+            <div class="flex gap-2">
+                <button onclick="login()" class="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-xl transition">Giriş Yap</button>
+                <button onclick="register()" class="flex-1 border border-slate-700 hover:bg-slate-800 py-3 rounded-xl transition">Kayıt Ol</button>
+            </div>
+        </div>
+    </div>
+
+    <main id="dashboard" class="hidden max-w-4xl mx-auto mt-10 p-6">
+        <div class="grid md:grid-cols-3 gap-6">
+            
+            <div class="md:col-span-1 space-y-6">
+                <div class="bg-slate-900 p-6 rounded-3xl border border-slate-800">
+                    <h3 class="font-bold text-lg mb-4 text-green-400">Yeni Bekçi Kur</h3>
+                    <div class="space-y-4 text-sm">
+                        <input type="text" id="ruleName" placeholder="Kural Adı (Örn: Argus Push)" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 outline-none focus:border-green-500">
+                        <select id="groupList" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 outline-none">
+                            <option value="">Gruplar yükleniyor...</option>
+                        </select>
+                        <button onclick="createWatchman()" class="w-full bg-green-600 py-2 rounded-lg font-bold hover:bg-green-500 transition">Oluştur</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="md:col-span-2">
+                <h3 class="font-bold text-xl mb-4">Aktif Bekçilerin</h3>
+                <div id="watchmanList" class="space-y-3">
+                    </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        let currentUser = null;
+        let token = localStorage.getItem('token');
+
+        // Sayfa yüklendiğinde oturum kontrolü
+        if(token) checkAuth();
+
+        async function checkAuth() {
+            // Basitlik için token varsa dashboard gösteriyoruz
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('userInfo').classList.remove('hidden');
+            loadGroups();
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({email, password})
+            });
+            const data = await res.json();
+            if(res.ok) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('userId', data.user.id);
+                location.reload();
+            } else { alert(data.error); }
+        }
+
+        async function register() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const res = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({email, password})
+            });
+            const data = await res.json();
+            alert(data.message || data.error);
+        }
+
+        async function loadGroups() {
+            const res = await fetch('/api/groups');
+            const groups = await res.json();
+            const select = document.getElementById('groupList');
+            if(res.ok) {
+                select.innerHTML = groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+            }
+        }
+
+        async function createWatchman() {
+            const userId = localStorage.getItem('userId');
+            const ruleName = document.getElementById('ruleName').value;
+            const targetId = document.getElementById('groupList').value;
+
+            const res = await fetch('/api/watchmen', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({userId, ruleName, targetId})
+            });
+            const data = await res.json();
+            if(res.ok) {
+                addRuleToUI(data.webhookUrl, ruleName);
+                alert("Bekçi başarıyla oluşturuldu!");
+            }
+        }
+
+        function addRuleToUI(url, name) {
+            const list = document.getElementById('watchmanList');
+            const div = document.createElement('div');
+            div.className = "bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col gap-2";
+            div.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-green-500">${name}</span>
+                    <span class="text-[10px] bg-green-500/10 text-green-500 px-2 py-1 rounded">Aktif</span>
+                </div>
+                <code class="text-[10px] bg-black p-2 rounded block break-all text-slate-400 select-all">${url}</code>
+            `;
+            list.prepend(div);
+        }
+
+        function logout() {
+            localStorage.clear();
+            location.reload();
+        }
+    </script>
+</body>
+</html>

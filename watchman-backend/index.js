@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path'); // EKLENDİ: Dosya yolları için
 
 const app = express();
 app.use(express.json());
@@ -18,32 +19,37 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: ["https://senin-frontend-linkin.onrender.com", "http://localhost:5173"], 
+        origin: "*", // Monolit yapıda aynı port olduğu için sorun kalmayacak ama güvenlik için "*" kalsın
         methods: ["GET", "POST"],
         credentials: true
     }
 });
-const userSchema = new mongoose.Schema({
+
+// --- STATİK DOSYA SERVİSİ (YENİ) ---
+// Frontend build edildiğinde dosyalar bu yolda olacak
+app.use(express.static(path.join(__dirname, '../watchman-frontend/dist')));
+
+// --- MONGODB BAĞLANTISI ---
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log('MongoDB Bağlantısı Başarılı! 🧠'))
+    .catch(err => console.error('MongoDB Hatası:', err));
+
+// --- MODELLER ---
+const User = mongoose.model('User', new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
     whatsappConnected: { type: Boolean, default: false }
-});
+}));
 
-const watchmanSchema = new mongoose.Schema({
+const Watchman = mongoose.model('Watchman', new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     ruleName: String,     
     targetId: String,     
     webhookToken: { type: String, unique: true, default: () => uuidv4() },
     isActive: { type: Boolean, default: true }
-});
+}));
 
-const User = mongoose.model('User', userSchema);
-const Watchman = mongoose.model('Watchman', watchmanSchema);
-
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB Bağlantısı Başarılı! 🧠'))
-    .catch(err => console.error('MongoDB Hatası:', err));
-
+// --- API ENDPOINT'LERİ ---
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -74,7 +80,7 @@ app.post('/api/watchmen', async (req, res) => {
         await newWatchman.save();
         res.json({ 
             message: 'Yeni bekçi kuruldu!', 
-            webhookUrl: `http://${req.get('host')}/webhook/v1/${newWatchman.webhookToken}` 
+            webhookUrl: `https://${req.get('host')}/webhook/v1/${newWatchman.webhookToken}` 
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -108,6 +114,7 @@ app.post('/webhook/v1/:token', async (req, res) => {
     res.status(200).send('OK');
 });
 
+// --- WHATSAPP MANTIĞI ---
 let sock;
 let isConnected = false;
 
@@ -122,16 +129,14 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
         if (qr) {
             qrcode.generate(qr, { small: true });
             io.emit('qr', qr); 
         }
-
         if (connection === 'close') {
             isConnected = false;
             io.emit('connection_status', 'disconnected');
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) setTimeout(() => connectToWhatsApp(), 5000);
         } else if (connection === 'open') {
             isConnected = true;
@@ -139,7 +144,6 @@ async function connectToWhatsApp() {
             console.log('WhatsApp Bağlantısı Aktif! ✅');
         }
     });
-
     sock.ev.on('creds.update', saveCreds);
 }
 
@@ -151,8 +155,14 @@ app.get('/api/groups', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- SPA DESTEĞİ (YENİ) ---
+// Eğer istek bir API değilse ve dosya bulunamadıysa React'in index.html'ini gönder
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../watchman-frontend/dist', 'index.html'));
+});
+
 io.on('connection', (socket) => {
-    console.log('Yeni bir Dashboard kullanıcısı bağlandı 🟢');
+    console.log('Dashboard kullanıcısı bağlandı 🟢');
     socket.emit('connection_status', isConnected ? 'connected' : 'disconnected');
 });
 
