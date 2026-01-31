@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
-const path = require('path'); // EKLENDİ: Dosya yolları için
+const path = require('path'); 
 
 const app = express();
 app.use(express.json());
@@ -19,22 +19,18 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // Monolit yapıda aynı port olduğu için sorun kalmayacak ama güvenlik için "*" kalsın
+        origin: "*", 
         methods: ["GET", "POST"],
         credentials: true
     }
 });
 
-// --- STATİK DOSYA SERVİSİ (YENİ) ---
-// Frontend build edildiğinde dosyalar bu yolda olacak
 app.use(express.static(path.join(__dirname, '../watchman-frontend/dist')));
 
-// --- MONGODB BAĞLANTISI ---
 mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log('MongoDB Bağlantısı Başarılı! 🧠'))
     .catch(err => console.error('MongoDB Hatası:', err));
 
-// --- MODELLER ---
 const User = mongoose.model('User', new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -49,7 +45,6 @@ const Watchman = mongoose.model('Watchman', new mongoose.Schema({
     isActive: { type: Boolean, default: true }
 }));
 
-// --- API ENDPOINT'LERİ ---
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -114,7 +109,6 @@ app.post('/webhook/v1/:token', async (req, res) => {
     res.status(200).send('OK');
 });
 
-// --- WHATSAPP MANTIĞI ---
 let sock;
 let isConnected = false;
 
@@ -155,8 +149,6 @@ app.get('/api/groups', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- SPA DESTEĞİ (YENİ) ---
-// Eğer istek bir API değilse ve dosya bulunamadıysa React'in index.html'ini gönder
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../watchman-frontend/dist', 'index.html'));
 });
