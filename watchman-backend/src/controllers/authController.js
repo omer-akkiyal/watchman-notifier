@@ -16,13 +16,22 @@ const sendTokenResponse = (user, statusCode, res) => {
 
     res.status(statusCode)
         .cookie('token', token, options)
-        .json({ success: true, token });
+        .json({
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email
+            }
+        });
 };
 
 exports.register = async (req, res) => {
-    const { email, password } = req.body;
+    const { name, email, password } = req.body;
 
-    const user = await User.create({ email, password });
+    // Şifre validasyonu frontend yapıyor ama backend de bakabilir
+    const user = await User.create({ name, email, password });
 
     const verificationToken = crypto.randomBytes(20).toString('hex');
     user.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
@@ -35,7 +44,7 @@ exports.register = async (req, res) => {
         await sendEmail({
             email: user.email,
             subject: 'Watchman V3 - Email Doğrulama',
-            html: `<h1>Hoşgeldiniz!</h1><p>Hesabınızı doğrulamak için lütfen <a href="${verifyUrl}">buraya tıklayın</a>.</p>`
+            html: `<h1>Hoşgeldiniz ${user.name || ''}!</h1><p>Hesabınızı doğrulamak için lütfen <a href="${verifyUrl}">buraya tıklayın</a>.</p>`
         });
 
         res.status(200).json({ success: true, data: "Email gönderildi." });

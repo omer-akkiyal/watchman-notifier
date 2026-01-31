@@ -24,18 +24,14 @@ passport.use(new GoogleStrategy({
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
-        // 1. Google ID ile ara
         let user = await User.findOne({ googleId: profile.id });
 
         if (user) {
             return done(null, user);
         }
 
-        // 2. Email ile ara (Eğer Google ID yoksa ama email kayıtlıysa)
         const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
 
-        // Email yoksa hata dönmemiz gerekebilir ama şimdilik devam edelim veya null user create edemeyiz (email required).
-        // Eğer email yoksa login başarısız olmalı.
         if (!email) {
             return done(new Error("Google hesabınızda onaylı bir e-posta adresi bulunamadı."), null);
         }
@@ -43,16 +39,16 @@ passport.use(new GoogleStrategy({
         user = await User.findOne({ email });
 
         if (user) {
-            // Mevcut hesabı Google ile bağla
             user.googleId = profile.id;
-            // Eğer daha önce doğrulanmadıysa, Google ile doğrulandı sayabiliriz
             if (!user.isVerified) user.isVerified = true;
+            // İsim yoksa güncelle
+            if (!user.name) user.name = profile.displayName;
             await user.save();
             return done(null, user);
         }
 
-        // 3. Yeni kullanıcı oluştur
         user = await User.create({
+            name: profile.displayName,
             googleId: profile.id,
             email: email,
             isVerified: true
@@ -65,7 +61,6 @@ passport.use(new GoogleStrategy({
     }
 }));
 
-// GitHub Strategy
 passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
@@ -86,6 +81,7 @@ passport.use(new GitHubStrategy({
             if (user) {
                 user.githubId = profile.id;
                 if (!user.isVerified) user.isVerified = true;
+                if (!user.name) user.name = profile.displayName || profile.username;
                 await user.save();
                 return done(null, user);
             }
@@ -93,6 +89,7 @@ passport.use(new GitHubStrategy({
 
         // Yeni kullanıcı
         user = await User.create({
+            name: profile.displayName || profile.username,
             githubId: profile.id,
             email: email, // Email yoksa null
             isVerified: true

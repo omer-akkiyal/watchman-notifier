@@ -22,7 +22,10 @@ const MainLayout = ({ children }) => {
         </div>
         <div className="mb-6 px-2">
           <p className="text-xs text-slate-500">Giriş Yapıldı:</p>
-          <p className="text-sm font-bold text-white truncate">{user?.email}</p>
+          <p className="text-sm font-bold text-white truncate" title={user?.email}>
+            {user?.name ? `${user.name}` : user?.email}
+          </p>
+          {user?.name && <p className="text-xs text-slate-400 truncate">{user?.email}</p>}
         </div>
         <nav className="space-y-4 flex-1">
           <Link to="/" className="flex items-center gap-4 text-slate-400 hover:text-green-400 p-2 transition-all font-medium"><LayoutDashboard size={20} /> Dashboard</Link>
