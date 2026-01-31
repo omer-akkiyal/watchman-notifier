@@ -63,15 +63,21 @@ passport.use(new GoogleStrategy({
             });
             return done(null, user);
         } catch (createErr) {
+            console.error("Google Create Error Details:", createErr); // Detaylı log
+
             if (createErr.code === 11000) {
-                // Eğer tam bu anda başka bir request ile aynı email kaydedildiyse (Race Condition)
-                // Tekrar bulmayı dene
-                user = await User.findOne({ email });
-                if (user) {
-                    user.googleId = profile.id;
-                    if (!user.isVerified) user.isVerified = true;
-                    await user.save();
-                    return done(null, user);
+                // Eğer hata email alanından kaynaklanıyorsa
+                if (createErr.keyPattern && createErr.keyPattern.email) {
+                    console.log("Duplicate Email detected during Google Auth race condition.");
+                    // Race condition: Anlık olarak oluşturulmuş olabilir, bulmayı dene.
+                    user = await User.findOne({ email });
+                    if (user) {
+                        user.googleId = profile.id;
+                        if (!user.isVerified) user.isVerified = true;
+                        if (!user.name) user.name = profile.displayName;
+                        await user.save();
+                        return done(null, user);
+                    }
                 }
             }
             throw createErr;
@@ -98,7 +104,7 @@ passport.use(new GitHubStrategy({
             return done(null, user);
         }
 
-        // 2. Email Belirleme ve Kontrol
+        // 2. Email kontrolü
         let email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
         if (!email) {
             email = `${profile.username || profile.id}@github.com`;
@@ -114,7 +120,7 @@ passport.use(new GitHubStrategy({
             return done(null, user);
         }
 
-        // 3. Yeni Kullanıcı Oluştur (Race Condition Korumalı)
+        // 3. Yeni Kullanıcı Oluştur
         try {
             user = await User.create({
                 name: profile.displayName || profile.username || 'GitHub User',
@@ -125,14 +131,18 @@ passport.use(new GitHubStrategy({
             });
             return done(null, user);
         } catch (createErr) {
+            console.error("GitHub Create Error Details:", createErr);
+
             if (createErr.code === 11000) {
-                // E-posta çakışması (Race condition)
-                user = await User.findOne({ email });
-                if (user) {
-                    user.githubId = profile.id;
-                    if (!user.isVerified) user.isVerified = true;
-                    await user.save();
-                    return done(null, user);
+                if (createErr.keyPattern && createErr.keyPattern.email) {
+                    console.log("Duplicate Email detected during GitHub Auth race condition.");
+                    user = await User.findOne({ email });
+                    if (user) {
+                        user.githubId = profile.id;
+                        if (!user.isVerified) user.isVerified = true;
+                        await user.save();
+                        return done(null, user);
+                    }
                 }
             }
             throw createErr;
