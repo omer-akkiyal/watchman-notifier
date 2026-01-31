@@ -41,6 +41,8 @@ exports.register = async (req, res) => {
 
         const verificationToken = crypto.randomBytes(20).toString('hex');
         user.verificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+        await user.save(); // Token'ı kaydet
+
         const clientUrl = process.env.CLIENT_URL || 'https://watchman-notifier.onrender.com';
         const verifyUrl = `${clientUrl}/verify-email/${verificationToken}`;
 

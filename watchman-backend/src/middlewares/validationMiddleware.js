@@ -5,7 +5,7 @@ const registerSchema = Joi.object({
         'string.email': 'Geçerli bir email adresi giriniz.',
         'any.required': 'Email alanı zorunludur.'
     }),
-    password: Joi.string().min(8).pattern(new RegExp('^[a-zA-Z0-9]{3,30}$')).required().messages({
+    password: Joi.string().min(8).required().messages({
         'string.min': 'Şifre en az 8 karakter olmalıdır.',
         'any.required': 'Şifre alanı zorunludur.'
     })
