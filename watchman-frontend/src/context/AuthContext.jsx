@@ -19,28 +19,35 @@ export const AuthProvider = ({ children }) => {
         // 2. URL Token kontrolü (Social Login)
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
+        const nameParam = params.get('name');
+        const emailParam = params.get('email');
+
         if (token) {
-            // Token ile user bilgisini çözümle (Basit decode veya backend isteği)
+            // URL'den gelen verileri al
+            let userId = null;
+
+            // Token Decode (Backup ID için)
             try {
-                // JWT payload'ı base64 decode et (library kullanmadan basitçe)
                 const base64Url = token.split('.')[1];
                 const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-                const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function (c) {
                     return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
                 }).join(''));
                 const decoded = JSON.parse(jsonPayload);
-                
-                // Backend controller login response'unda user objesi dönmüştü, burada token içinden id alıyoruz sadece.
-                // User objesini set edelim (email olmayabilir ama id var)
-                const userData = { id: decoded.id, email: "Social Login User" }; // Email backendden gelmeliydi ama neyse
-                setUser(userData);
-                localStorage.setItem('user', JSON.stringify(userData));
-                
-                // URL temizle
-                window.history.replaceState({}, document.title, "/");
-            } catch (e) {
-                console.error("Token decode error", e);
-            }
+                userId = decoded.id;
+            } catch (e) { console.error(e); }
+
+            const userData = {
+                id: userId,
+                name: nameParam || "User",
+                email: emailParam || "Social Login"
+            };
+
+            setUser(userData);
+            localStorage.setItem('user', JSON.stringify(userData));
+
+            // URL temizle
+            window.history.replaceState({}, document.title, "/");
         }
 
         setLoading(false);

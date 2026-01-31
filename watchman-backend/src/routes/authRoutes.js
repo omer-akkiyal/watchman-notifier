@@ -45,7 +45,12 @@ router.get('/google/callback',
             // Hem Cookie hem Query Param olarak gönderelim (Garanti olsun)
             setTokenCookie(res, user);
             const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-            res.redirect(`${CLIENT_URL}?token=${token}`);
+
+            // User bilgilerini URL parametresi olarak geçiyoruz (Frontend AuthContext yakalayacak)
+            const name = encodeURIComponent(user.name || '');
+            const email = encodeURIComponent(user.email || '');
+
+            res.redirect(`${CLIENT_URL}?token=${token}&name=${name}&email=${email}`);
         })(req, res, next);
     }
 );
@@ -65,7 +70,11 @@ router.get('/github/callback',
 
             setTokenCookie(res, user);
             const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
-            res.redirect(`${CLIENT_URL}?token=${token}`);
+
+            const name = encodeURIComponent(user.name || '');
+            const email = encodeURIComponent(user.email || '');
+
+            res.redirect(`${CLIENT_URL}?token=${token}&name=${name}&email=${email}`);
         })(req, res, next);
     }
 );

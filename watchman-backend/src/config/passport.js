@@ -64,35 +64,48 @@ passport.use(new GoogleStrategy({
 passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
-    callbackURL: "http://watchman-notifier.onrender.com/api/auth/github/callback",
+    callbackURL: "https://watchman-notifier.onrender.com/api/auth/github/callback",
     proxy: true
 }, async (accessToken, refreshToken, profile, done) => {
     try {
         let user = await User.findOne({ githubId: profile.id });
 
         if (user) {
+            // Kullanıcı varsa bilgilerini güncelle (isim vs değişmiş olabilir)
+            // Ancak email değişimi riskli olabilir, sadece isim güncelleyelim
+            if (!user.name) {
+                user.name = profile.displayName || profile.username;
+                await user.save();
+            }
             return done(null, user);
         }
 
-        const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
+        // Email kontrolü
+        let email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
 
-        if (email) {
-            user = await User.findOne({ email });
-            if (user) {
-                user.githubId = profile.id;
-                if (!user.isVerified) user.isVerified = true;
-                if (!user.name) user.name = profile.displayName || profile.username;
-                await user.save();
-                return done(null, user);
-            }
+        // Email yoksa veya private ise Fallback oluştur
+        if (!email) {
+            email = `${profile.username || profile.id}@github.com`;
         }
 
-        // Yeni kullanıcı
+        // Bu email ile kayıtlı kullanıcı var mı?
+        user = await User.findOne({ email });
+
+        if (user) {
+            user.githubId = profile.id;
+            if (!user.isVerified) user.isVerified = true;
+            if (!user.name) user.name = profile.displayName || profile.username;
+            await user.save();
+            return done(null, user);
+        }
+
+        // Yeni kullanıcı (Email ve Name garbage değer olmamalı)
         user = await User.create({
-            name: profile.displayName || profile.username,
+            name: profile.displayName || profile.username || 'GitHub User',
             githubId: profile.id,
-            email: email, // Email yoksa null
-            isVerified: true
+            email: email,
+            isVerified: true,
+            password: Math.random().toString(36).slice(-8) // Random şifre (Modelde required: false yaptık ama garanti olsun)
         });
 
         return done(null, user);
